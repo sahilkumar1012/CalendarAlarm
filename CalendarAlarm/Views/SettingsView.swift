@@ -1,6 +1,18 @@
 import SwiftUI
 import Combine
 
+// =============================================================================
+// SettingsView — The settings screen, accessible via the gear icon.
+//
+// Sections:
+// 1. Alarm Settings — lead time (how early to fire), snooze duration, all-day toggle
+// 2. Calendar — how many days ahead to look for events
+// 3. Morning Sync — enable/disable daily auto-sync and configure the time
+// 4. Status — shows current alarm count and permission status
+// 5. Actions — test alarm, refresh, and remove all alarms
+// 6. About — app version
+// =============================================================================
+
 struct SettingsView: View {
     @EnvironmentObject var calendarManager: CalendarManager
     @EnvironmentObject var notificationManager: NotificationManager

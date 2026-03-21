@@ -1,6 +1,19 @@
 import SwiftUI
 import Combine
 
+// =============================================================================
+// ContentView — The main screen of the app.
+//
+// FLOW:
+// 1. If permissions are missing → shows PermissionsView
+// 2. If permissions are granted → shows the event list with:
+//    - Stat pills (Today count, Alarms count, Next event time)
+//    - Sync button to manually refresh events + reschedule alarms
+//    - The event list grouped by day (via EventListInlineView)
+//    - Settings button (gear icon) in the navigation bar
+// 3. Pull-to-refresh is supported
+// =============================================================================
+
 struct ContentView: View {
     @EnvironmentObject var calendarManager: CalendarManager
     @EnvironmentObject var notificationManager: NotificationManager
@@ -138,6 +151,7 @@ struct ContentView: View {
 
     // MARK: - Helpers
 
+    // Finds the next upcoming event and returns a friendly string like "In 30 mins"
     private var nextEventTime: String {
         guard let next = calendarManager.upcomingEvents.first(where: { $0.isUpcoming }) else {
             return "—"
@@ -145,6 +159,10 @@ struct ContentView: View {
         return next.relativeTimeString
     }
 
+    // Called by the Sync button and pull-to-refresh.
+    // 1. Refreshes events from the calendar
+    // 2. Waits 1 second (for UI to update)
+    // 3. Reschedules all alarms based on the fresh event list
     private func syncCalendar() {
         isSyncing = true
         calendarManager.forceRefresh()
@@ -160,6 +178,7 @@ struct ContentView: View {
 
 // MARK: - Stat Pill
 
+// StatPill — A small rounded card showing a stat (e.g. "3 Today", "5 Alarms")
 struct StatPill: View {
     let icon: String
     let value: String
