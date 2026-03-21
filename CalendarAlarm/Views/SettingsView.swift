@@ -69,13 +69,11 @@ struct SettingsView: View {
                         Text("1 day").tag(1)
                         Text("3 days").tag(3)
                         Text("7 days").tag(7)
-                        Text("14 days").tag(14)
-                        Text("30 days").tag(30)
                     }
                 } header: {
                     Label("Calendar", systemImage: "calendar")
                 } footer: {
-                    Text("How far ahead to look for events. iOS limits to 64 pending notifications.")
+                    Text("How far ahead to look for events. Maximum 7 days.")
                 }
 
                 // Morning Sync

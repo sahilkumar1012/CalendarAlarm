@@ -8,20 +8,25 @@ import Combine
 // FLOW:
 // 1. On init, checks if AlarmKit is authorized and starts observing alarm updates
 // 2. When scheduleAlarms() is called (on sync, foreground return, settings change):
-//    a. Removes all existing alarms
-//    b. Loops through upcoming events, skipping all-day and muted ones
-//    c. For each event, schedules an AlarmKit alarm at (startTime - leadTime)
-//    d. iOS handles the full alarm experience: sound, vibration, lock-screen UI
+//    a. Cancels ALL existing alarms (both in-memory and persisted IDs)
+//    b. Groups events by trigger time — events starting at the same minute
+//       are merged into ONE alarm (max 2 event names shown)
+//    c. Schedules one AlarmKit alarm per unique trigger time
+//    d. Persists alarm IDs to UserDefaults so they survive app restarts
 // 3. AlarmKit alarms behave like the native Clock app — they fire even in Do Not
 //    Disturb, show a full-screen dismiss/snooze interface, and play alarm sound.
+//
+// BUG FIXES:
+// - Alarm IDs are persisted in UserDefaults so removeAllAlarms() works after restart
+// - Events at the same time are grouped into a single alarm (no alarm spam)
+// - A scheduling lock prevents double-scheduling from rapid sync taps
+// - Hard cap of 7 days look-ahead regardless of settings
 //
 // iOS limits: max 64 pending alarms at a time.
 // =============================================================================
 
 // MARK: - Alarm Metadata
-// Custom metadata attached to each alarm. AlarmKit requires this to conform
-// to AlarmMetadata. We store the event ID and calendar name so we can
-// identify which event an alarm belongs to.
+// Custom metadata attached to each alarm so we can identify what it's for.
 // Must be nonisolated to satisfy AlarmMetadata protocol in Xcode 26.
 nonisolated struct NudgeAlarmMetadata: AlarmMetadata {
     var eventId: String
@@ -35,25 +40,52 @@ class NotificationManager: ObservableObject {
     @Published var scheduledCount = 0      // Number of currently scheduled alarms
 
     // User preferences (persisted via @AppStorage / UserDefaults)
-    @AppStorage("alarmLeadTimeMinutes") var alarmLeadTimeMinutes: Int = 0  // How many minutes before event to fire alarm
-    @AppStorage("snoozeMinutes") var snoozeMinutes: Int = 5                // How long snooze lasts
+    @AppStorage("alarmLeadTimeMinutes") var alarmLeadTimeMinutes: Int = 0  // Minutes before event to fire
+    @AppStorage("snoozeMinutes") var snoozeMinutes: Int = 5                // Snooze duration
 
     // AlarmKit's shared manager — the system API for scheduling/cancelling alarms
     private let alarmManager = AlarmManager.shared
 
-    // Tracks which alarms we've scheduled: eventID → AlarmKit UUID
-    // We need this mapping to cancel specific alarms later
+    // In-memory map: a key (eventID or group key) → AlarmKit UUID
     private var scheduledAlarms: [String: UUID] = [:]
 
+    // UserDefaults key for persisting alarm UUIDs across app restarts
+    private static let persistedAlarmsKey = "persistedAlarmUUIDs"
+
+    // Prevents double-scheduling if sync is tapped rapidly
+    private var isScheduling = false
+
     init() {
+        // Load alarm IDs from previous session so we can cancel them
+        loadPersistedAlarmIDs()
         Task {
             await checkAuthorization()
             observeAlarmUpdates()
         }
     }
 
+    // MARK: - Persist Alarm IDs
+    // Save/load alarm UUIDs to UserDefaults so we can cancel them even after app restart.
+
+    private func loadPersistedAlarmIDs() {
+        guard let saved = UserDefaults.standard.dictionary(forKey: Self.persistedAlarmsKey) as? [String: String] else { return }
+        for (key, uuidString) in saved {
+            if let uuid = UUID(uuidString: uuidString) {
+                scheduledAlarms[key] = uuid
+            }
+        }
+    }
+
+    private func persistAlarmIDs() {
+        let toSave = scheduledAlarms.mapValues { $0.uuidString }
+        UserDefaults.standard.set(toSave, forKey: Self.persistedAlarmsKey)
+    }
+
+    private func clearPersistedAlarmIDs() {
+        UserDefaults.standard.removeObject(forKey: Self.persistedAlarmsKey)
+    }
+
     // MARK: - Authorization
-    // Check if the user has granted AlarmKit permission
 
     func checkAuthorization() async {
         switch alarmManager.authorizationState {
@@ -66,8 +98,7 @@ class NotificationManager: ObservableObject {
         }
     }
 
-    // Request AlarmKit permission from the user.
-    // If previously denied, opens iOS Settings so they can re-enable it.
+    // Request AlarmKit permission. If denied, opens iOS Settings.
     func requestAuthorization() async {
         switch alarmManager.authorizationState {
         case .notDetermined:
@@ -91,8 +122,7 @@ class NotificationManager: ObservableObject {
     }
 
     // MARK: - Observe Live Alarm Updates
-    // Listens for changes to scheduled alarms (e.g. user dismissed one via system UI)
-    // and keeps our scheduledCount in sync.
+    // Keeps scheduledCount in sync when user dismisses alarms via system UI.
 
     private func observeAlarmUpdates() {
         Task {
@@ -102,44 +132,108 @@ class NotificationManager: ObservableObject {
         }
     }
 
-    // MARK: - Schedule Alarms
-    // Main entry point: takes a list of calendar events and schedules an alarm for each.
-    // Called after every sync, foreground return, or settings change.
+    // MARK: - Schedule Alarms (Main Entry Point)
+    // Takes a list of calendar events, groups by trigger time, and schedules
+    // ONE alarm per unique trigger minute. This is the fix for alarm spam.
 
     func scheduleAlarms(for events: [CalendarEvent], mutedIDs: Set<String> = []) {
+        // Prevent double-scheduling from rapid taps
+        guard !isScheduling else { return }
+        isScheduling = true
+
         Task {
-            // Clear all existing alarms first (fresh schedule each time)
+            // Step 1: Cancel ALL existing alarms (clean slate every time)
             await removeAllAlarms()
 
-            var count = 0
-            for event in events {
-                guard !event.isAllDay else { continue }           // Skip all-day events
-                guard !mutedIDs.contains(event.id) else { continue } // Skip muted events
+            // Step 2: Filter events — skip all-day, muted, and past events
+            // Hard cap at 7 days regardless of lookAheadDays setting
+            let maxDate = Date().addingTimeInterval(7 * 24 * 60 * 60)
+            let eligibleEvents = events.filter { event in
+                !event.isAllDay
+                && !mutedIDs.contains(event.id)
+                && event.startDate <= maxDate
+            }
 
-                // Calculate when the alarm should fire (event start minus lead time)
-                let triggerDate = event.startDate.addingTimeInterval(
-                    -Double(alarmLeadTimeMinutes * 60)
+            // Step 3: Calculate trigger date for each event
+            let leadSeconds = Double(alarmLeadTimeMinutes * 60)
+            let now = Date()
+
+            struct EventWithTrigger {
+                let event: CalendarEvent
+                let triggerDate: Date
+            }
+
+            let eventsWithTriggers = eligibleEvents.compactMap { event -> EventWithTrigger? in
+                let trigger = event.startDate.addingTimeInterval(-leadSeconds)
+                guard trigger > now else { return nil }  // Skip past triggers
+                return EventWithTrigger(event: event, triggerDate: trigger)
+            }
+
+            // Step 4: Group events by trigger minute (events within the same minute = 1 alarm)
+            // This prevents 5 alarms firing simultaneously for overlapping meetings
+            let grouped = Dictionary(grouping: eventsWithTriggers) { item -> String in
+                let components = Foundation.Calendar.current.dateComponents(
+                    [.year, .month, .day, .hour, .minute],
+                    from: item.triggerDate
                 )
-                guard triggerDate > Date() else { continue }  // Skip events already past
-                guard count < 64 else { break }               // iOS limit: 64 pending alarms
+                return "\(components.year!)-\(components.month!)-\(components.day!)-\(components.hour!)-\(components.minute!)"
+            }
 
-                await scheduleAlarmKitAlarm(for: event, triggerDate: triggerDate)
+            // Step 5: Schedule one alarm per group
+            var count = 0
+            for (groupKey, group) in grouped.sorted(by: { $0.value.first!.triggerDate < $1.value.first!.triggerDate }) {
+                guard count < 64 else { break }  // iOS limit: 64 pending alarms
+
+                // Build a combined title showing up to 2 event names
+                let title = buildGroupTitle(events: group.map { $0.event })
+                let triggerDate = group.first!.triggerDate
+                let firstEvent = group.first!.event
+
+                await scheduleAlarmKitAlarm(
+                    key: groupKey,
+                    title: title,
+                    tintColor: Color(firstEvent.calendarColor),
+                    calendarName: firstEvent.calendarName,
+                    triggerDate: triggerDate
+                )
                 count += 1
             }
 
+            // Step 6: Persist alarm IDs and update count
+            persistAlarmIDs()
             scheduledCount = count
+            isScheduling = false
         }
     }
 
-    // Schedules a single AlarmKit alarm for one event.
-    // This configures the full alarm experience: title, buttons, tint color,
-    // snooze duration, and the exact trigger time.
-    private func scheduleAlarmKitAlarm(for event: CalendarEvent, triggerDate: Date) async {
+    // Builds a combined title for grouped events:
+    // 1 event:  "Team Standup"
+    // 2 events: "Team Standup & Design Review"
+    // 3+ events: "Team Standup & Design Review + 1 more"
+    private func buildGroupTitle(events: [CalendarEvent]) -> String {
+        switch events.count {
+        case 1:
+            return events[0].title
+        case 2:
+            return "\(events[0].title) & \(events[1].title)"
+        default:
+            let extra = events.count - 2
+            return "\(events[0].title) & \(events[1].title) + \(extra) more"
+        }
+    }
+
+    // Schedules a single AlarmKit alarm with the given title and trigger time.
+    private func scheduleAlarmKitAlarm(
+        key: String,
+        title: String,
+        tintColor: Color,
+        calendarName: String,
+        triggerDate: Date
+    ) async {
         typealias AlarmConfiguration = AlarmManager.AlarmConfiguration<NudgeAlarmMetadata>
 
         let alarmID = UUID()
 
-        // Configure the alarm UI buttons shown on the lock screen
         let stopButton = AlarmButton(
             text: "Dismiss",
             textColor: .white,
@@ -152,29 +246,23 @@ class NotificationManager: ObservableObject {
             systemImageName: "clock.arrow.circlepath"
         )
 
-        // The alert presentation defines what the user sees when the alarm fires
         let alertPresentation = AlarmPresentation.Alert(
-            title: LocalizedStringResource(stringLiteral: event.title),
+            title: LocalizedStringResource(stringLiteral: title),
             stopButton: stopButton,
             secondaryButton: snoozeButton,
-            secondaryButtonBehavior: .countdown   // Snooze button shows a countdown timer
+            secondaryButtonBehavior: .countdown
         )
 
-        // Alarm attributes: visual presentation + calendar-colored tint
         let attributes = AlarmAttributes<NudgeAlarmMetadata>(
             presentation: AlarmPresentation(alert: alertPresentation),
-            tintColor: Color(event.calendarColor)
+            tintColor: tintColor
         )
 
-        // Countdown durations:
-        // - preAlert: countdown shown BEFORE alarm fires (nil = no pre-alarm UI)
-        // - postAlert: how long snooze lasts after alarm fires
         let countdownDuration = Alarm.CountdownDuration(
             preAlert: nil,
             postAlert: TimeInterval(snoozeMinutes * 60)
         )
 
-        // Fixed schedule: fires at exactly the calculated trigger time
         let schedule = Alarm.Schedule.fixed(triggerDate)
 
         let configuration = AlarmConfiguration(
@@ -183,67 +271,69 @@ class NotificationManager: ObservableObject {
             attributes: attributes
         )
 
-        // Submit the alarm to the system
         do {
             try await alarmManager.schedule(id: alarmID, configuration: configuration)
-            scheduledAlarms[event.id] = alarmID
+            scheduledAlarms[key] = alarmID
         } catch {
-            print("AlarmKit schedule error for '\(event.title)': \(error.localizedDescription)")
+            print("AlarmKit schedule error for '\(title)': \(error.localizedDescription)")
         }
     }
 
     // MARK: - Snooze
-    // Reschedules a single alarm for N minutes from now (used by snooze functionality)
 
     func scheduleSingleAlarm(for event: CalendarEvent) {
         Task {
             let snoozeDate = Date().addingTimeInterval(Double(snoozeMinutes * 60))
-            await scheduleAlarmKitAlarm(for: event, triggerDate: snoozeDate)
+            await scheduleAlarmKitAlarm(
+                key: "snooze_\(event.id)",
+                title: event.title,
+                tintColor: Color(event.calendarColor),
+                calendarName: event.calendarName,
+                triggerDate: snoozeDate
+            )
+            persistAlarmIDs()
         }
     }
 
     // MARK: - Test Alarm
-    // Fires a test alarm in 5 seconds so the user can preview the alarm experience.
-    // Creates a dummy CalendarEvent and schedules it via the same AlarmKit path.
+    // Fires a test alarm in 5 seconds to preview the experience.
 
     func scheduleTestAlarm() {
         Task {
-            let testEvent = CalendarEvent(
-                id: "test_alarm_\(UUID().uuidString)",
+            await scheduleAlarmKitAlarm(
+                key: "test_\(UUID().uuidString)",
                 title: "🔔 Test Alarm",
-                startDate: Date().addingTimeInterval(5),
-                endDate: Date().addingTimeInterval(65),
+                tintColor: .red,
                 calendarName: "Nudge",
-                calendarColor: .red,
-                location: nil,
-                notes: "This is a test alarm to preview the experience.",
-                isAllDay: false
+                triggerDate: Date().addingTimeInterval(5)
             )
-            await scheduleAlarmKitAlarm(for: testEvent, triggerDate: Date().addingTimeInterval(5))
+            persistAlarmIDs()
         }
     }
 
     // MARK: - Cancel
-    // Cancel a specific alarm by event ID
 
     func cancelAlarm(for eventId: String) {
         Task {
             guard let alarmID = scheduledAlarms[eventId] else { return }
             try? await alarmManager.stop(id: alarmID)
             scheduledAlarms.removeValue(forKey: eventId)
+            persistAlarmIDs()
         }
     }
 
-    // Cancel ALL scheduled alarms (async version, used internally)
+    // Cancel ALL scheduled alarms — both in-memory AND persisted from previous sessions.
     func removeAllAlarms() async {
+        // Cancel every alarm we know about (from this session + loaded from UserDefaults)
         for (_, alarmID) in scheduledAlarms {
             try? await alarmManager.stop(id: alarmID)
         }
         scheduledAlarms.removeAll()
+        clearPersistedAlarmIDs()
         scheduledCount = 0
     }
 
-    // Cancel ALL scheduled alarms (sync wrapper, used by UI buttons)
+    // Sync wrapper for UI buttons (e.g. "Remove All Alarms" in Settings)
     func removeAllAlarms() {
         Task { await removeAllAlarms() }
     }

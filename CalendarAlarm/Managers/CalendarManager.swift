@@ -92,10 +92,11 @@ class CalendarManager: ObservableObject {
 
         isLoading = true
 
-        // Calculate the date range to query
+        // Calculate the date range to query — hard cap at 7 days max
         let now = Date()
         let startOfToday = Calendar.current.startOfDay(for: now)
-        let endDate = Calendar.current.date(byAdding: .day, value: lookAheadDays, to: startOfToday)!
+        let cappedDays = min(lookAheadDays, 7)  // Never look more than 7 days ahead
+        let endDate = Calendar.current.date(byAdding: .day, value: cappedDays, to: startOfToday)!
         let endOfToday = Calendar.current.date(byAdding: .day, value: 1, to: startOfToday)!
 
         // EventKit predicate: "give me all events between now and N days from now"

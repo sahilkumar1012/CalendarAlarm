@@ -114,9 +114,9 @@ class BackgroundSyncManager {
             task.setTaskCompleted(success: false)
         }
 
-        // Fetch upcoming events from the device calendar
+        // Fetch upcoming events from the device calendar — hard cap 7 days
         let lookAheadDays = UserDefaults.standard.integer(forKey: "lookAheadDays")
-        let days = lookAheadDays > 0 ? lookAheadDays : 7
+        let days = min(max(lookAheadDays, 1), 7)  // Clamp between 1 and 7
 
         let now = Date()
         let endDate = Calendar.current.date(byAdding: .day, value: days, to: now)!
