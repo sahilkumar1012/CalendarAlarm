@@ -183,4 +183,4 @@ open CalendarAlarm.xcodeproj
 
 ## License
 
-MIT
+www.codeharmony.dev
