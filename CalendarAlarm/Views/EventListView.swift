@@ -95,11 +95,12 @@ struct EventListView: View {
         }
         .listStyle(.insetGrouped)
         .refreshable {
-            calendarManager.forceRefresh()
-            notificationManager.scheduleAlarms(
-                for: calendarManager.upcomingEvents,
-                mutedIDs: calendarManager.mutedEventIDs
-            )
+            calendarManager.forceRefresh {
+                notificationManager.scheduleAlarms(
+                    for: calendarManager.upcomingEvents,
+                    mutedIDs: calendarManager.mutedEventIDs
+                )
+            }
         }
     }
 }

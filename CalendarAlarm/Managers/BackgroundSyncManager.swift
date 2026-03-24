@@ -2,7 +2,6 @@ import BackgroundTasks
 import EventKit
 import UserNotifications
 import SwiftUI
-import Combine
 
 // =============================================================================
 // BackgroundSyncManager — Syncs calendar events automatically every morning.

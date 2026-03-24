@@ -142,11 +142,12 @@ struct SettingsView: View {
                     }
 
                     Button {
-                        calendarManager.forceRefresh()
-                        notificationManager.scheduleAlarms(
-                            for: calendarManager.upcomingEvents,
-                            mutedIDs: calendarManager.mutedEventIDs
-                        )
+                        calendarManager.forceRefresh {
+                            notificationManager.scheduleAlarms(
+                                for: calendarManager.upcomingEvents,
+                                mutedIDs: calendarManager.mutedEventIDs
+                            )
+                        }
                     } label: {
                         Label("Refresh & Reschedule All Alarms", systemImage: "arrow.clockwise")
                     }
@@ -181,11 +182,12 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
-                        calendarManager.forceRefresh()
-                        notificationManager.scheduleAlarms(
-                            for: calendarManager.upcomingEvents,
-                            mutedIDs: calendarManager.mutedEventIDs
-                        )
+                        calendarManager.forceRefresh {
+                            notificationManager.scheduleAlarms(
+                                for: calendarManager.upcomingEvents,
+                                mutedIDs: calendarManager.mutedEventIDs
+                            )
+                        }
                         dismiss()
                     }
                 }

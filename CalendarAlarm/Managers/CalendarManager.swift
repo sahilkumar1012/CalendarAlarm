@@ -127,6 +127,7 @@ class CalendarManager: ObservableObject {
                     .sorted { $0.startDate < $1.startDate }
 
                 self.isLoading = false
+                self.cleanupStaleMutedIDs()
                 completion?()
             }
         }
@@ -187,6 +188,16 @@ class CalendarManager: ObservableObject {
     // Convenience: all events that have alarms enabled (not muted)
     var enabledEvents: [CalendarEvent] {
         upcomingEvents.filter { !mutedEventIDs.contains($0.id) }
+    }
+
+    // Remove muted IDs for events that no longer exist in the calendar.
+    // Prevents unbounded growth of the muted set over months of use.
+    private func cleanupStaleMutedIDs() {
+        let currentIDs = Set(upcomingEvents.map { $0.id })
+        let staleIDs = mutedEventIDs.subtracting(currentIDs)
+        guard !staleIDs.isEmpty else { return }
+        mutedEventIDs.subtract(staleIDs)
+        saveMutedEvents()
     }
 }
 
