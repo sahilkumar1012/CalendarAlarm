@@ -152,8 +152,9 @@ final class CalendarEventTests: XCTestCase {
     }
 
     func testRelativeTimeString_minutes() {
+        // Use 30.5 minutes to avoid boundary drift from test execution time
         let event = makeEvent(
-            start: Date().addingTimeInterval(30 * 60),
+            start: Date().addingTimeInterval(30 * 60 + 30),
             end: Date().addingTimeInterval(90 * 60)
         )
         XCTAssertEqual(event.relativeTimeString, "In 30 mins")
@@ -161,15 +162,16 @@ final class CalendarEventTests: XCTestCase {
 
     func testRelativeTimeString_singleMinute() {
         let event = makeEvent(
-            start: Date().addingTimeInterval(90),
-            end: Date().addingTimeInterval(3690)
+            start: Date().addingTimeInterval(90 + 10),
+            end: Date().addingTimeInterval(3700)
         )
         XCTAssertEqual(event.relativeTimeString, "In 1 min")
     }
 
     func testRelativeTimeString_hours() {
+        // Add buffer so elapsed ms don't drop below the 2-hour boundary
         let event = makeEvent(
-            start: Date().addingTimeInterval(2 * 3600),
+            start: Date().addingTimeInterval(2 * 3600 + 60),
             end: Date().addingTimeInterval(3 * 3600)
         )
         XCTAssertEqual(event.relativeTimeString, "In 2 hrs")
@@ -177,7 +179,7 @@ final class CalendarEventTests: XCTestCase {
 
     func testRelativeTimeString_singleHour() {
         let event = makeEvent(
-            start: Date().addingTimeInterval(3600),
+            start: Date().addingTimeInterval(3600 + 60),
             end: Date().addingTimeInterval(7200)
         )
         XCTAssertEqual(event.relativeTimeString, "In 1 hr")
@@ -185,7 +187,7 @@ final class CalendarEventTests: XCTestCase {
 
     func testRelativeTimeString_days() {
         let event = makeEvent(
-            start: Date().addingTimeInterval(2 * 86400),
+            start: Date().addingTimeInterval(2 * 86400 + 60),
             end: Date().addingTimeInterval(2 * 86400 + 3600)
         )
         XCTAssertEqual(event.relativeTimeString, "In 2 days")
@@ -193,7 +195,7 @@ final class CalendarEventTests: XCTestCase {
 
     func testRelativeTimeString_singleDay() {
         let event = makeEvent(
-            start: Date().addingTimeInterval(86400),
+            start: Date().addingTimeInterval(86400 + 60),
             end: Date().addingTimeInterval(86400 + 3600)
         )
         XCTAssertEqual(event.relativeTimeString, "In 1 day")
