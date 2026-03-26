@@ -154,6 +154,8 @@ struct SettingsView: View {
 
                     Button(role: .destructive) {
                         notificationManager.removeAllAlarms()
+                        dismiss() // dismiss the settings panel so it doesn't trigger refresh
+                        // but this is showing events on the home page. 
                     } label: {
                         Label("Remove All Alarms", systemImage: "bell.slash")
                     }
