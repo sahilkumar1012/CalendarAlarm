@@ -155,7 +155,8 @@ struct SettingsView: View {
                     Button(role: .destructive) {
                         notificationManager.removeAllAlarms()
                         dismiss() // dismiss the settings panel so it doesn't trigger refresh
-                        // but this is showing events on the home page. 
+                        // but this is showing events on the home page.
+                        // TODO create a notice that all alarms are dismissed until further sync.
                     } label: {
                         Label("Remove All Alarms", systemImage: "bell.slash")
                     }
@@ -170,13 +171,13 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0.0")
+                        Text("0.1.0")
                             .foregroundColor(.secondary)
                     }
                 } header: {
                     Label("About", systemImage: "info.circle")
                 } footer: {
-                    Text("Nudge reads your events and triggers alarms so you never miss a meeting.")
+                    Text("Nudge reads your calendar events and triggers alarms so you never miss a meeting.")
                 }
             }
             .navigationTitle("Settings")
