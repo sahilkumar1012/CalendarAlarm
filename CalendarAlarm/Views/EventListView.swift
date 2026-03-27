@@ -25,6 +25,9 @@ struct EventListInlineView: View {
         } else if calendarManager.upcomingEvents.isEmpty {
             emptyState
         } else {
+            if allEventsMuted {
+                allMutedBanner
+            }
             ForEach(groupedEvents, id: \.key) { day, events in
                 Section {
                     ForEach(events) { event in
@@ -32,6 +35,7 @@ struct EventListInlineView: View {
                             event: event,
                             isAlarmEnabled: !calendarManager.isEventMuted(event.id),
                             onToggleAlarm: {
+                                UISelectionFeedbackGenerator().selectionChanged()
                                 calendarManager.toggleMute(for: event.id)
                                 notificationManager.scheduleAlarms(
                                     for: calendarManager.upcomingEvents,
@@ -65,6 +69,27 @@ struct EventListInlineView: View {
         }
         .padding(40)
         .listRowBackground(Color.clear)
+    }
+
+    private var allMutedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bell.slash.fill")
+                .foregroundColor(.orange)
+            Text("All events are muted — no alarms will fire")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(10)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var allEventsMuted: Bool {
+        !calendarManager.upcomingEvents.isEmpty &&
+        calendarManager.upcomingEvents.allSatisfy { calendarManager.isEventMuted($0.id) }
     }
 
     // Group events by day, using friendly labels ("Today", "Tomorrow", etc.)
@@ -153,6 +178,8 @@ struct EventRow: View {
                         .symbolEffect(.bounce, value: isAlarmEnabled)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isAlarmEnabled ? "Mute alarm" : "Enable alarm")
+                .accessibilityHint("Double-tap to \(isAlarmEnabled ? "mute" : "enable") alarm for \(event.title)")
             }
         }
         .padding(.vertical, 4)

@@ -42,10 +42,12 @@ class CalendarManager: ObservableObject {
         loadMutedEvents()
         checkAuthorizationStatus()
         startAutoRefresh()
+        observeCalendarChanges()
     }
 
     deinit {
         refreshTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Authorization
@@ -145,6 +147,23 @@ class CalendarManager: ObservableObject {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.fetchEvents()
         }
+    }
+
+    // MARK: - Calendar Change Observer
+    // Detects when events are added, deleted, or modified externally
+    // (e.g. from the native Calendar app, Outlook, Google Calendar sync).
+
+    private func observeCalendarChanges() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(calendarStoreChanged),
+            name: .EKEventStoreChanged,
+            object: eventStore
+        )
+    }
+
+    @objc private func calendarStoreChanged() {
+        fetchEvents()
     }
 
     // Called by the Sync button and pull-to-refresh
