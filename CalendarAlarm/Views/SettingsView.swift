@@ -170,11 +170,11 @@ struct SettingsView: View {
 
                 // Support & Info
                 Section {
-                    Link(destination: URL(string: "https://www.codeharmony.dev/nudge/privacy")!) {
-                        Label("Privacy Policy", systemImage: "hand.raised.fill")
-                    }
+//                    Link(destination: URL(string: "https://www.codeharmony.dev/nudge/privacy")!) {
+//                        Label("Privacy Policy", systemImage: "hand.raised.fill")
+//                    }
 
-                    Link(destination: URL(string: "mailto:sahilkumar1012@gmail.com?subject=Nudge%20Feedback")!) {
+                    Link(destination: URL(string: "mailto:sahilpcs@hotmail.com?subject=Nudge%20Feedback")!) {
                         Label("Contact Support", systemImage: "envelope.fill")
                     }
 
@@ -238,7 +238,9 @@ struct SettingsView: View {
                         )
                     }
                 }
-                Button("Later", role: .cancel) { }
+                Button("Later", role: .cancel) {
+                    dismiss()
+                }
             } message: {
                 Text("All alarms have been cleared. Tap Re-sync to reschedule alarms for your upcoming events.")
             }
