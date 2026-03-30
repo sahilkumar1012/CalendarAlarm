@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import StoreKit
 
 // =============================================================================
 // SettingsView — The settings screen, accessible via the gear icon.
@@ -17,6 +18,7 @@ struct SettingsView: View {
     @EnvironmentObject var calendarManager: CalendarManager
     @EnvironmentObject var notificationManager: NotificationManager
     @Environment(\.dismiss) var dismiss
+    @Environment(\.requestReview) var requestReview
 
     @AppStorage("lookAheadDays") private var lookAheadDays: Int = 7
     @AppStorage("alarmLeadTimeMinutes") private var alarmLeadTimeMinutes: Int = 0
@@ -166,12 +168,31 @@ struct SettingsView: View {
                     Text("Test Alarm schedules a real AlarmKit alarm that fires in 5 seconds so you can experience exactly how event alarms will look and sound.")
                 }
 
+                // Support & Info
+                Section {
+//                    Link(destination: URL(string: "https://www.codeharmony.dev/nudge/privacy")!) {
+//                        Label("Privacy Policy", systemImage: "hand.raised.fill")
+//                    }
+
+                    Link(destination: URL(string: "mailto:sahilpcs@hotmail.com?subject=Nudge%20Feedback")!) {
+                        Label("Contact Support", systemImage: "envelope.fill")
+                    }
+
+                    Button {
+                        requestReview()
+                    } label: {
+                        Label("Rate Nudge", systemImage: "star.fill")
+                    }
+                } header: {
+                    Label("Support", systemImage: "questionmark.circle")
+                }
+
                 // About
                 Section {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("0.1.0")
+                        Text(appVersion)
                             .foregroundColor(.secondary)
                     }
                 } header: {
@@ -217,7 +238,9 @@ struct SettingsView: View {
                         )
                     }
                 }
-                Button("Later", role: .cancel) { }
+                Button("Later", role: .cancel) {
+                    dismiss()
+                }
             } message: {
                 Text("All alarms have been cleared. Tap Re-sync to reschedule alarms for your upcoming events.")
             }
@@ -232,6 +255,12 @@ struct SettingsView: View {
                 mutedIDs: calendarManager.mutedEventIDs
             )
         }
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
     }
 }
 

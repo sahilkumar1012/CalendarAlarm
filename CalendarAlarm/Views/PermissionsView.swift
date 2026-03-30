@@ -128,6 +128,8 @@ struct PermissionCard: View {
             .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
         }
         .disabled(isGranted)
+        .accessibilityLabel("\(title): \(isGranted ? "Granted" : "Not granted")")
+        .accessibilityHint(isGranted ? "" : "Double-tap to grant \(title.lowercased()) permission")
     }
 }
 

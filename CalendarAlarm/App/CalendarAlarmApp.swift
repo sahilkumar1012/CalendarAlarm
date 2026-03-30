@@ -37,6 +37,10 @@ struct NudgeApp: App {
                         indexInSpotlight()
                     }
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                        // Re-check permissions in case user revoked in iOS Settings
+                        calendarManager.checkAuthorizationStatus()
+                        Task { await notificationManager.checkAuthorization() }
+
                         calendarManager.fetchEvents {
                             notificationManager.scheduleAlarms(
                                 for: calendarManager.upcomingEvents,

@@ -174,7 +174,7 @@ class BackgroundSyncManager {
             content.categoryIdentifier = "ALARM_CATEGORY"
             content.userInfo = ["eventId": eventId]
             content.interruptionLevel = .timeSensitive
-            content.sound = .defaultCritical
+            content.sound = .defaultRingtone
 
             // Schedule the notification at the exact trigger time
             let comps = Calendar.current.dateComponents(

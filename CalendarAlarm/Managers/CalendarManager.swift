@@ -42,10 +42,12 @@ class CalendarManager: ObservableObject {
         loadMutedEvents()
         checkAuthorizationStatus()
         startAutoRefresh()
+        observeCalendarChanges()
     }
 
     deinit {
         refreshTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Authorization
@@ -56,8 +58,20 @@ class CalendarManager: ObservableObject {
     }
 
     // Ask the user for calendar access. iOS shows a system prompt.
-    // If granted, we immediately fetch events.
+    // If already denied, opens iOS Settings so the user can re-enable manually.
     func requestAccess() {
+        let status = EKEventStore.authorizationStatus(for: .event)
+
+        // If denied/restricted, iOS won't show the prompt again — open Settings
+        if status == .denied || status == .restricted {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                DispatchQueue.main.async {
+                    UIApplication.shared.open(url)
+                }
+            }
+            return
+        }
+
         if #available(iOS 17.0, *) {
             // iOS 17+ requires "full access" request
             eventStore.requestFullAccessToEvents { [weak self] granted, error in
@@ -145,6 +159,23 @@ class CalendarManager: ObservableObject {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.fetchEvents()
         }
+    }
+
+    // MARK: - Calendar Change Observer
+    // Detects when events are added, deleted, or modified externally
+    // (e.g. from the native Calendar app, Outlook, Google Calendar sync).
+
+    private func observeCalendarChanges() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(calendarStoreChanged),
+            name: .EKEventStoreChanged,
+            object: eventStore
+        )
+    }
+
+    @objc private func calendarStoreChanged() {
+        fetchEvents()
     }
 
     // Called by the Sync button and pull-to-refresh

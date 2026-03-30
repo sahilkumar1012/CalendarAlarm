@@ -87,6 +87,7 @@ struct ContentView: View {
                             .font(.system(size: 18))
                             .foregroundStyle(.secondary)
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
             .sheet(isPresented: $showSettings) {
@@ -157,6 +158,7 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 syncCalendar()
             } label: {
                 HStack(spacing: 5) {
@@ -247,6 +249,8 @@ struct StatCell: View {
                 .tracking(0.5)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(value)")
     }
 }
 

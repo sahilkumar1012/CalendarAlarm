@@ -28,6 +28,7 @@ struct SplashView: View {
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
+            .accessibilityHidden(true)
 
             VStack(spacing: 20) {
                 Spacer()
@@ -45,6 +46,7 @@ struct SplashView: View {
                 }
                 .scaleEffect(iconScale)
                 .opacity(iconOpacity)
+                .accessibilityHidden(true)
 
                 // App name
                 Text("Nudge")
@@ -66,6 +68,7 @@ struct SplashView: View {
                     .scaleEffect(1.1)
                     .opacity(loadingOpacity)
                     .padding(.bottom, 60)
+                    .accessibilityLabel("Loading")
             }
         }
         .onAppear {
